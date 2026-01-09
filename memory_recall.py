@@ -20,26 +20,46 @@ def hyperbolic_distance_from_lorentz_ip(lorentz_ip, kappa):
     return R * np.arccosh(z)
 
 
+
 def foo(x, kappa=None):
     return -x
 
 
-def geo_distance(lorentz_ip, kappa):
-    d = hyperbolic_distance_from_lorentz_ip(lorentz_ip, kappa)
-    return d  # or -d if you want closer => higher score
+def geo_distance(d):
+    return d 
 
 
-def square_distance(lorentz_ip, kappa):
-    d = hyperbolic_distance_from_lorentz_ip(lorentz_ip, kappa)
+def square_distance(d):
     return d**2
 
 
 def update(geometry, query, memory, phi=foo):
 
+    query = geometry.regularize(query)
+    memory = geometry.regularize(memory)
+
     tangent_memory = geometry.metric.log(memory, base_point=query)
-    lorentz_inner = geometry.embedding_space.metric.inner_product(query, memory)
-    score = phi(lorentz_inner, geometry.curvature)
+
+    if phi == foo:
+        lorentz_inner = geometry.embedding_space.metric.inner_product(query, memory)
+        # dist = np.arccosh(-lorentz_inner)
+        score = phi(lorentz_inner, geometry.curvature)
+
+    else:
+    #     if phi == geo_distance:
+    #         # print(geometry.metric.dist(query, memory), "geo")
+    #         # raise Exception
+    #     else:
+    #         print(geometry.metric.dist(query, memory), "square")
+    #         raise Exception
+
+        score = phi(geometry.metric.dist(query, memory))
+
     weights = softmax(-score)
+
+    if phi == geo_distance:
+        print("geo distance", weights)
+
     tangent_query = weights @ tangent_memory
     return geometry.metric.exp(tangent_query, query)
 

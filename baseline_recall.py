@@ -12,7 +12,7 @@ def update_mhn(query, memory, beta=1.0):
 def update_dam(query, memory, n_order=3, beta=1.0):
     sim = memory @ query  # (M,)
     score = beta * (sim**n_order)  # (M,)
-    w = softmax(score, axis=0)  # (M,)
+    w = score  # (M,)
     return w @ memory  # (n,)
 
 

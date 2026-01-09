@@ -93,16 +93,29 @@ class HyperboloidMetricKappa(RiemannianMetric):
         return self._space.embedding_space.metric.squared_norm(vector)
 
     def dist(self, point_a, point_b):
-        """Geodesic distance for curvature kappa<0."""
         embedding_metric = self._space.embedding_space.metric
+
+        # Debug guard: fail early if NaNs appear
+        if gs.any(gs.isnan(point_a)) or gs.any(gs.isnan(point_b)):
+            raise ValueError("NaN in dist inputs (point_a or point_b).")
+
         sq_norm_a = embedding_metric.squared_norm(point_a)
         sq_norm_b = embedding_metric.squared_norm(point_b)
+
+        if gs.any(gs.isnan(sq_norm_a)) or gs.any(gs.isnan(sq_norm_b)):
+            raise ValueError("NaN in squared_norm inside dist.")
+
         inner_prod = embedding_metric.inner_product(point_a, point_b)
 
-        # Same cosh argument as Geomstats, but distance scales by R.
-        cosh_angle = -inner_prod / gs.sqrt(sq_norm_a * sq_norm_b)
+        den2 = gs.abs(sq_norm_a * sq_norm_b)
+        den2 = gs.clip(den2, 0.0, math.inf)      # keeps it nonnegative; NaN already handled above
+        den = gs.sqrt(den2)
+        den = gs.clip(den, 1e-15, math.inf)
+
+        cosh_angle = -inner_prod / den
         cosh_angle = gs.clip(cosh_angle, 1.0, 1e24)
         return self._space.radius * gs.arccosh(cosh_angle)
+
 
     def squared_dist(self, point_a, point_b):
         return self.dist(point_a, point_b) ** 2
