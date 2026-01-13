@@ -28,7 +28,13 @@ def get_args():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output-dir", type=str, default="outputs")
 
-    ap.add_argument("--d", type=int, default=20)
+    ap.add_argument("--dataset", type=str, default="synthetic", 
+                    choices=["synthetic", "mnist", "cifar10"],
+                    help="Dataset to use: synthetic, mnist, or cifar10")
+    ap.add_argument("--d", type=int, default=20,
+                    help="Dimension for synthetic, or PCA dimension for images (if specified)")
+    ap.add_argument("--pca-dim", type=int, default=None,
+                    help="Optional: PCA dimension for image datasets (overrides --d)")
     ap.add_argument("--M-min", type=int, default=100)
     ap.add_argument("--M-max", type=int, default=150)
     ap.add_argument("--M-step", type=int, default=10)
@@ -59,7 +65,12 @@ def set_safe(self, **kwargs):
 
 def run_replot(args):
 
-    output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv") ) 
+    dataset = getattr(args, "dataset", "synthetic")
+    if dataset == "synthetic":
+        output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv"))
+    else:
+        dim_str = str(args.pca_dim) if args.pca_dim else str(args.d)
+        output_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/result.csv"))
     df = pd.read_csv(output_dir)
 
     plt.figure(figsize=(6, 5))
@@ -74,7 +85,10 @@ def run_replot(args):
     # ax.set_xticks("log")
 
     # Title and labels
-    ax.set_title(f"Recall Rate vs M (d={args.d})")
+    dataset = getattr(args, "dataset", "synthetic")
+    dim_str = str(args.pca_dim) if (dataset != "synthetic" and args.pca_dim) else str(args.d)
+    title_str = f"Recall Rate vs M ({dataset}, d={dim_str})" if dataset != "synthetic" else f"Recall Rate vs M (d={args.d})"
+    ax.set_title(title_str)
     ax.set_xlabel("M")
     ax.set_ylabel("Recall rate")
 
@@ -86,7 +100,10 @@ def run_replot(args):
 
     plt.tight_layout()
 
-    plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png") ) 
+    if dataset == "synthetic":
+        plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png"))
+    else:
+        plot_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/recall_plot.png")) 
     plot_dir.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(plot_dir, dpi=480)
@@ -108,6 +125,17 @@ def main():
 
     args = get_args()
 
+    sns.set_theme(rc={
+        'axes.titlesize': 20,    # Title font size
+        'axes.labelsize': 20,    # X and Y label font size
+        'legend.fontsize': 16,   # Legend text font size
+        'legend.title_fontsize': 18, # Legend title font size
+        'xtick.labelsize': 16,   # X tick label font size
+        'ytick.labelsize': 16,    # Y tick label font size
+        "font.family": "serif",
+        "font.serif": ["Courier New"]
+    })
+    sns.set_style("whitegrid") 
 
     if args.replot is True:
         logger.info("Re generating figures...")
@@ -132,32 +160,31 @@ def main():
             for i in range(args.n_trials):
 
                 identity_phi_rate = run_recall_hyperbolic(args, "identity", M, int(i + M))
-                geo_dist_phi_rate = run_recall_hyperbolic(
-                    args, "geo_distance", M, int(i + M)
-                )
-                square_dist_phi_rate = run_recall_hyperbolic(
-                    args, "square_distance", M, int(i + M)
-                )
+                # geo_dist_phi_rate = run_recall_hyperbolic(
+                #     args, "geo_distance", M, int(i + M)
+                # )
+                # square_dist_phi_rate = run_recall_hyperbolic(
+                #     args, "square_distance", M, int(i + M)
+                # )
 
                 result_data["model"].append("identity")
-                result_data["model"].append("geo_distance")
-                result_data["model"].append("square_distance")
+                # result_data["model"].append("geo_distance")
+                # result_data["model"].append("square_distance")
 
                 result_data["recall rate"].append(identity_phi_rate)
-                result_data["recall rate"].append(geo_dist_phi_rate)
-                result_data["recall rate"].append(square_dist_phi_rate)
+                # result_data["recall rate"].append(geo_dist_phi_rate)
+                # result_data["recall rate"].append(square_dist_phi_rate)
 
                 result_data["M"].append(M)
-                result_data["M"].append(M)
-                result_data["M"].append(M)
+                # result_data["M"].append(M)
+                # result_data["M"].append(M)
 
                 result_data["Geometry"].append("H")
-                result_data["Geometry"].append("H")
-                result_data["Geometry"].append("H")
-
+                # result_data["Geometry"].append("H")
+                # result_data["Geometry"].append("H")
 
                 dam_rate = run_recall_dam(args, M, int(i + M))
-                mhn_rate = run_recall_dam(args, M, int(i + M))
+                mhn_rate = run_recall_mhn(args, M, int(i + M))
 
                 result_data["model"].append("DAM")
                 result_data["model"].append("MHN")
@@ -172,7 +199,12 @@ def main():
                 result_data["Geometry"].append("E")
 
         df = pd.DataFrame(result_data)
-        output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv") ) 
+        dataset = getattr(args, "dataset", "synthetic")
+        if dataset == "synthetic":
+            output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv"))
+        else:
+            dim_str = str(args.pca_dim) if args.pca_dim else str(args.d)
+            output_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/result.csv"))
         output_dir.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_dir)
 
@@ -180,23 +212,24 @@ def main():
 
         custom_palette = {'MHN': '#37373E', 'DAM': '#86928B', 'identity':'#FF6B6B', 'geo_distance':'#FFAC6B', 'square_distance': '#FBB7C0'}
 
-        ax = sns.lineplot(data=df, x="M", y="recall rate", hue="model", errorbar='sd', marker='o',markersize=10, alpha=0.7, palette=custom_palette, err_style='bars', style="Geometry", ) # style="Geometry", 
+        ax = sns.lineplot(data=df, x="M", y="recall rate", hue="model", errorbar='sd', marker='o',markersize=10, alpha=0.7, palette=custom_palette, err_style='bars') # style="Geometry", 
 
         # Title and labels
-        ax.set_title("Recall Rate vs M")
+        dim_str = str(args.pca_dim) if (dataset != "synthetic" and args.pca_dim) else str(args.d)
+        title_str = f"Recall Rate vs M ({dataset}, d={dim_str})" if dataset != "synthetic" else f"Recall Rate vs M (d={args.d})"
+        ax.set_title(title_str)
         ax.set_xlabel("M")
         ax.set_ylabel("Recall rate")
 
         ax.set_xscale("log")
-
         ax.grid(True, which="both", linestyle="--", alpha=0.3)
-        ax.legend(title="Model")
 
-        plt.title(f"Recall Rate vs M (d={args.d})")
+        plt.tight_layout(pad=0.1)
 
-        plt.tight_layout()
-
-        plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png") ) 
+        if dataset == "synthetic":
+            plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png"))
+        else:
+            plot_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/recall_plot.png"))
         plot_dir.parent.mkdir(parents=True, exist_ok=True)
 
         plt.savefig(plot_dir, dpi=480)

@@ -58,10 +58,11 @@ class HyperboloidKappa(_Hyperbolic, LevelSet):
     def regularize(self, point):
         """Rescale point to satisfy <x,x>_L = -R^2 (canonical sheet)."""
         sq_norm = self.embedding_space.metric.squared_norm(point)
-        if not gs.all(sq_norm):
-            raise ValueError(
-                "Cannot project a vector of norm 0 in Minkowski space to the hyperboloid."
-            )
+        # Handle numerical precision issues: if squared norm is too close to zero,
+        # clip it to a small negative value to prevent division by zero
+        # (Minkowski squared norm should be negative for hyperboloid points)
+        eps = 1e-10
+        sq_norm = gs.clip(sq_norm, -math.inf, -eps)
         real_norm = gs.sqrt(gs.abs(sq_norm))
         # Want |<x,x>_L| = R^2, so scale by (R / real_norm)
         return gs.einsum("...i,...->...i", point, self.radius / real_norm)
@@ -97,6 +98,7 @@ class HyperboloidMetricKappa(RiemannianMetric):
 
         # Debug guard: fail early if NaNs appear
         if gs.any(gs.isnan(point_a)) or gs.any(gs.isnan(point_b)):
+            print(point_a, point_b)
             raise ValueError("NaN in dist inputs (point_a or point_b).")
 
         sq_norm_a = embedding_metric.squared_norm(point_a)
