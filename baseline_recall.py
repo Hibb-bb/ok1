@@ -2,16 +2,57 @@ import numpy as np
 from scipy.special import softmax
 
 
-def update_mhn(query, memory, beta=1.0):
-    score = beta * (memory @ query)  # (M,)
-    w = softmax(score, axis=0)  # (M,)
-    return memory.T @ w  # (n,) - equivalent to w @ memory but more explicit
+from scipy.special import softmax
 
-def update_dam(query, memory, n_order=10, beta=1.0):
-    sim = memory @ query  # (M,)
-    score = beta * (sim**n_order)  # (M,)
-    w = score / np.linalg.norm(score, axis=0) # (M,)
-    return w @ memory  # (n,)
+def l2_normalize(x, axis=-1, eps=1e-12):
+    return x / (np.linalg.norm(x, axis=axis, keepdims=True) + eps)
+
+def update_mhn(query, memory, beta=1.0, scale=False, normalize=True, max_steps=10):
+    # memory: (M, n), query: (n,)
+    memory = np.asarray(memory, dtype=np.float64)
+    query = np.asarray(query, dtype=np.float64)
+    beta = np.float64(beta)
+    tol = 0.01
+    mem = l2_normalize(memory, axis=1) if normalize else memory
+
+    for step in range(max_steps):
+
+        q = l2_normalize(query[None, :], axis=1)[0] if normalize else query
+
+        logits = mem @ q  # (M,)
+        if scale:
+            logits = logits / np.sqrt(mem.shape[1])
+        w = softmax(beta * logits, axis=0)  # (M,)
+        max_weight_idx = np.argmax(w)
+        max_weight = w[max_weight_idx]
+
+        if max_weight >= 1 - tol:
+            return memory[max_weight_idx]
+        else:
+            query = w @ mem
+    result = query
+    return result # , w  # return weights for evaluation/debug
+
+def update_dam(query, memory, n_order=10, beta=1.0, max_steps=10):
+    memory = np.asarray(memory, dtype=np.float64)
+    query = np.asarray(query, dtype=np.float64)
+    beta = np.float64(beta)
+    tol = 0.01
+    for step in range(max_steps):
+
+        sim = memory @ query  # (M,)
+        score = beta * (sim**n_order)  # (M,)
+        w = score / (np.linalg.norm(score, axis=0) + 1e-6)  # (M,)
+
+        max_weight_idx = np.argmax(w)
+        max_weight = w[max_weight_idx]
+
+        if max_weight >= 1 - tol:
+            return memory[max_weight_idx]
+        else:
+            query = score @ memory
+
+    return query  # (n,)
 
 
 def make_query_from_target_euclidean(target, sigma, rng):
@@ -47,15 +88,11 @@ def run_recall_mhn(args, M, seed):
         query = make_query_from_target_euclidean(target, args.noise_sigma, rng)
 
         converged = False
-        for step in range(args.max_steps):
-            new = update_mhn(query, memory, beta=beta)
-            dist = np.linalg.norm(new - target)
+        new = update_mhn(query, memory, beta=beta,max_steps= args.max_steps)
+        dist = np.linalg.norm(new - target)
 
-            if dist <= args.tol:
-                correct_recall += 1
-                converged = True
-                break
-            query = new
+        if dist <= args.tol:
+            correct_recall += 1
     
     return correct_recall / M
 
@@ -88,13 +125,10 @@ def run_recall_dam(args, M, seed):
         target = memory[t]
         query = make_query_from_target_euclidean(target, args.noise_sigma, rng)
 
-        for step in range(args.max_steps):
-            new = update_dam(query, memory, n_order=n_order, beta=beta)
-            dist = np.linalg.norm(new - target)
+        new = update_dam(query, memory, n_order=n_order, beta=beta, max_steps= args.max_steps)
+        dist = np.linalg.norm(new - target)
 
-            if dist <= args.tol:
-                correct_recall += 1
-                break
-            query = new
+        if dist <= args.tol:
+            correct_recall += 1
     
     return correct_recall / M

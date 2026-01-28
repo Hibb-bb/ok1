@@ -35,52 +35,36 @@ def square_distance(d):
     return d**2
 
 
-def update(geometry, query, memory, phi=foo):
+def update(geometry, query, memory, phi=foo, max_steps=10):
     query = geometry.regularize(query)
     memory = geometry.regularize(memory)
 
-    tangent_memory = geometry.metric.log(memory, base_point=query)
+    tol = 0.01
 
-    if phi == foo:
-        lorentz_inner = geometry.embedding_space.metric.inner_product(query, memory)
-        # dist = np.arccosh(-lorentz_inner)
-        score = phi(lorentz_inner, geometry.curvature)
+    for step in range(max_steps):
 
-    else:
-    #     if phi == geo_distance:
-    #         # print(geometry.metric.dist(query, memory), "geo")
-    #         # raise Exception
-    #     else:
-    #         print(geometry.metric.dist(query, memory), "square")
-    #         raise Exception
+        tangent_memory = geometry.metric.log(memory, base_point=query)
 
-        score = phi(geometry.metric.dist(query, memory))
-    weights = softmax(-score)
+        if phi == foo:
+            lorentz_inner = geometry.embedding_space.metric.inner_product(query, memory)
+            score = phi(lorentz_inner, geometry.curvature)
 
-    # if np.isnan(weights).any() is True:
-    #     print("w", weights)
-    #     print("s", score)
-    #     raise Exception("bad weights")
+        else:
+            score = phi(geometry.metric.dist(query, memory))
 
-    if phi == geo_distance:
-        print("geo distance", weights)
+        weights = softmax(-score)
 
-    # Check if weights are close to one-hot
-    max_weight_idx = np.argmax(weights)
-    max_weight = weights[max_weight_idx]
-    # If the max weight is very close to 1 (e.g., > 0.99), treat as one-hot
-    if max_weight > 0.99:
-        result = memory[max_weight_idx]
-    else:
-        tangent_query = weights @ tangent_memory
-        result = geometry.metric.exp(tangent_query, query)
-    # result = geometry.regularize(result)
+        max_weight_idx = np.argmax(weights)
+        max_weight = weights[max_weight_idx]
 
-    # if gs.any(gs.isnan(result)):
-    #     print("result", result)
-    #     print("score", score)
-    #     print("weights", weights)
-    #     raise Exception
+        if max_weight >= 1 - tol:
+            return memory[max_weight_idx]
+
+        else:
+            tangent_query = weights @ tangent_memory
+            query = geometry.metric.exp(tangent_query, query)
+
+    result = query
 
     return result
 
@@ -159,6 +143,7 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
         raise ValueError(f"Unknown dataset: {dataset}")
 
     correct_recall = 0
+    except_count = 0
     for t in range(M):
         target = memory[t]
 
@@ -167,12 +152,13 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
         else:
             query = queries[t]
 
-        for step in range(args.max_steps):
-            new = update(geometry, query, memory, phi=phi)
-
+        try:
+            new = update(geometry, query, memory, phi=phi, max_steps=args.max_steps)
             if geometry.metric.dist(new, target) < args.tol:
                 correct_recall += 1
-                break
-            query = new
-
+        except:
+            except_count += 1
+            continue
+    if except_count != 0:
+        print("Exception count: ", except_count, "/", M)
     return correct_recall / M
