@@ -1,0 +1,10 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local data / experiment outputs
+data/
+outputs/
+
+# Archives
+*.tar.gz
