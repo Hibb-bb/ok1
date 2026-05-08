@@ -1,0 +1,210 @@
+INFO: Class 3 (cat)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/cifar10/inclass/class3/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/cifar10/inclass/class3/pixels/Radius2.0/recall_plot.png
+INFO: Class 5 (dog)
+INFO:   M=10
+INFO:   M=13
+INFO:   M=16
+INFO:   M=21
+INFO:   M=27
+INFO:   M=34
+INFO:   M=44
+INFO:   M=56
+INFO:   M=72
+INFO:   M=91
+INFO:   M=117
+INFO:   M=150
+INFO:   M=191
+INFO:   M=245
+INFO:   M=313
+INFO:   M=400
+INFO:   CSV -> outputs/cifar10/inclass/class5/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/cifar10/inclass/class5/pixels/Radius2.0/recall_plot.png
+INFO: Class 6 (frog)
+INFO:   M=10
+INFO:   M=13
+INFO:   M=16
+INFO:   M=21
+INFO:   M=27
+INFO:   M=34
+INFO:   M=44
+INFO:   M=56
+INFO:   M=72
+INFO:   M=91
+INFO:   M=117
+INFO:   M=150
+INFO:   M=191
+INFO:   M=245
+INFO:   M=313
+INFO:   M=400
+INFO:   CSV -> outputs/cifar10/inclass/class6/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/cifar10/inclass/class6/pixels/Radius2.0/recall_plot.png
+INFO: Class 7 (horse)
+INFO:   M=10
+INFO:   M=13
+INFO:   M=16
+INFO:   M=21
+INFO:   M=27
+INFO:   M=34
+INFO:   M=44
+INFO:   M=56
+INFO:   M=72
+INFO:   M=91
+INFO:   M=117
+INFO:   M=150
+INFO:   M=191
+INFO:   M=245
+INFO:   M=313
+INFO:   M=400
+INFO:   CSV -> outputs/cifar10/inclass/class7/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/cifar10/inclass/class7/pixels/Radius2.0/recall_plot.png
+INFO: Class 9 (truck)
+INFO:   M=10
+INFO:   M=13
+INFO:   M=16
+INFO:   M=21
+INFO:   M=27
+INFO:   M=34
+INFO:   M=44
+INFO:   M=56
+INFO:   M=72
+INFO:   M=91
+INFO:   M=117
+INFO:   M=150
+INFO:   M=191
+INFO:   M=245
+INFO:   M=313
+INFO:   M=400
+INFO:   CSV -> outputs/cifar10/inclass/class9/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/cifar10/inclass/class9/pixels/Radius2.0/recall_plot.png
+INFO: Class 0 (0)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class0/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class0/pixels/Radius2.0/recall_plot.png
+INFO: Class 1 (1)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class1/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class1/pixels/Radius2.0/recall_plot.png
+INFO: Class 2 (2)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class2/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class2/pixels/Radius2.0/recall_plot.png
+INFO: Class 3 (3)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class3/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class3/pixels/Radius2.0/recall_plot.png
+INFO: Class 9 (9)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class9/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class9/pixels/Radius2.0/recall_plot.png
+INFO: Class 6 (6)
+INFO:   M=10
+INFO:   M=12
+INFO:   M=15
+INFO:   M=18
+INFO:   M=22
+INFO:   M=27
+INFO:   M=33
+INFO:   M=40
+INFO:   M=49
+INFO:   M=60
+INFO:   M=74
+INFO:   M=90
+INFO:   M=110
+INFO:   M=134
+INFO:   M=164
+INFO:   M=200
+INFO:   CSV -> outputs/mnist/inclass/class6/pixels/Radius2.0/result.csv
+INFO:   plot -> outputs/mnist/inclass/class6/pixels/Radius2.0/recall_plot.png
+slurmstepd: error: Unable to send job complete message: Unable to contact slurm controller (connect failure)

@@ -1,26 +1,31 @@
-import os
+import recall_config
+
+recall_config.early_set_geomstats_backend_from_argv()
+
 import argparse
-import time
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import logging
+from pathlib import Path
 
 import matplotlib
+import matplotlib.ticker
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
-from pathlib import Path
-import logging
+from recall_config import image_feature_dir, image_title_dim
 
 from memory_recall import run_recall_hyperbolic
 from baseline_recall import run_recall_dam, run_recall_mhn
 
-
 import warnings
+
 warnings.filterwarnings(
     "error",
     message=".*invalid value encountered in sqrt.*",
     category=RuntimeWarning,
 )
+
 
 def get_args():
     ap = argparse.ArgumentParser()
@@ -28,13 +33,36 @@ def get_args():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output-dir", type=str, default="outputs")
 
-    ap.add_argument("--dataset", type=str, default="synthetic", 
-                    choices=["synthetic", "mnist", "cifar10"],
-                    help="Dataset to use: synthetic, mnist, or cifar10")
-    ap.add_argument("--d", type=int, default=20,
-                    help="Dimension for synthetic, or PCA dimension for images (if specified)")
-    ap.add_argument("--pca-dim", type=int, default=None,
-                    help="Optional: PCA dimension for image datasets (overrides --d)")
+    ap.add_argument(
+        "--dataset",
+        type=str,
+        default="synthetic",
+        choices=["synthetic", "mnist", "cifar10"],
+        help="Dataset to use: synthetic, mnist, or cifar10",
+    )
+    ap.add_argument(
+        "--d",
+        type=int,
+        default=20,
+        help="Dimension for synthetic, or default PCA dim for images if --pca-dim omitted",
+    )
+    ap.add_argument(
+        "--pca-dim",
+        type=int,
+        default=None,
+        help="PCA dimension for images; ignored if --no-pca",
+    )
+    ap.add_argument(
+        "--no-pca",
+        action="store_true",
+        help="MNIST/CIFAR: use raw pixels (784 / 3072) after R scaling, no PCA",
+    )
+    ap.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
+    ap.add_argument(
+        "--no-batch",
+        action="store_true",
+        help="Euclidean recall: scalar loop instead of batched torch (debug)",
+    )
     ap.add_argument("--M-min", type=int, default=100)
     ap.add_argument("--M-max", type=int, default=150)
     ap.add_argument("--M-step", type=int, default=10)
@@ -50,55 +78,76 @@ def get_args():
 
     ap.add_argument("--tol", type=float, default=0.001)
 
-    ap.add_argument("--replot", action="store_true",)
-    ap.add_argument("--plot-3x3", action="store_true", help="Generate 3x3 figure with all datasets and dimensions")
+    ap.add_argument("--replot", action="store_true")
+    ap.add_argument(
+        "--plot-3x3",
+        action="store_true",
+        help="Generate 3x3 figure with all datasets and dimensions",
+    )
 
     args = ap.parse_args()
+    args.use_batch = not args.no_batch
     return args
 
 
-    args = ap.parse_args()
-    return args
-
-
-def set_safe(self, **kwargs):
-    if 'xscale' in kwargs and kwargs['xscale'] == 'log':
-        raise ValueError('Setting log scale on a categorical axis is '
-                         'not valid.')
-    return self.set(**kwargs)
-
+def _image_csv_plot_paths(args):
+    feat = image_feature_dir(args)
+    base = Path(args.output_dir) / args.dataset / feat / f"Radius{args.mem_R}"
+    return base / "result.csv", base / "recall_plot.png"
 
 
 def run_replot(args):
 
     dataset = getattr(args, "dataset", "synthetic")
     if dataset == "synthetic":
-        output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv"))
+        output_dir = Path(
+            args.output_dir
+            + str("/dim")
+            + str(args.d)
+            + str("/Radius")
+            + str(args.mem_R)
+            + str("/result.csv")
+        )
     else:
-        dim_str = str(args.pca_dim) if args.pca_dim else str(args.d)
-        output_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/result.csv"))
+        output_dir, _ = _image_csv_plot_paths(args)
     df = pd.read_csv(output_dir)
 
     plt.figure(figsize=(6, 5))
 
-    custom_palette = {'MHN': '#E4572E', 'DAM': '#29335C', 'identity':'#F3A712', 'geo_distance':'#A8C686', 'square_distance': '#669BBC'}
+    custom_palette = {
+        "MHN": "#E4572E",
+        "DAM": "#29335C",
+        "identity": "#F3A712",
+        "geo_distance": "#A8C686",
+        "square_distance": "#669BBC",
+        "Karcher-Flow": "#FF6B6B",
+    }
 
-    ax = sns.lineplot(data=df, x="M", y="recall rate", hue="model", errorbar='sd', marker='o',markersize=10, alpha=0.7, palette=custom_palette, err_style='bars')# .scale(x="log") # style="Geometry", 
-    
-    # set_safe(ax, xscale="log")  # <-- comment/uncomment this line to see the issue
+    ax = sns.lineplot(
+        data=df,
+        x="M",
+        y="recall rate",
+        hue="model",
+        errorbar="sd",
+        marker="o",
+        markersize=10,
+        alpha=0.7,
+        palette=custom_palette,
+        err_style="bars",
+    )
 
     ax.set_xscale("log")
-    # ax.set_xticks("log")
 
-    # Title and labels
-    dataset = getattr(args, "dataset", "synthetic")
-    dim_str = str(args.pca_dim) if (dataset != "synthetic" and args.pca_dim) else str(args.d)
-    title_str = f"Recall Rate vs M ({dataset}, d={dim_str})" if dataset != "synthetic" else f"Recall Rate vs M (d={args.d})"
+    if dataset != "synthetic":
+        dim_str = image_title_dim(args)
+        title_str = f"Recall Rate vs M ({dataset}, d={dim_str})"
+    else:
+        title_str = f"Recall Rate vs M (d={args.d})"
     ax.set_title(title_str)
     ax.set_xlabel("M")
     ax.set_ylabel("Recall rate")
 
-    ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(base=10.0, subs='all'))
+    ax.xaxis.set_minor_locator(matplotlib.ticker.LogLocator(base=10.0, subs="all"))
     ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
 
     ax.legend(title="Model")
@@ -106,9 +155,16 @@ def run_replot(args):
     plt.tight_layout()
 
     if dataset == "synthetic":
-        plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png"))
+        plot_dir = Path(
+            args.output_dir
+            + str("/dim")
+            + str(args.d)
+            + str("/Radius")
+            + str(args.mem_R)
+            + str("/recall_plot.png")
+        )
     else:
-        plot_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/recall_plot.png")) 
+        _, plot_dir = _image_csv_plot_paths(args)
     plot_dir.parent.mkdir(parents=True, exist_ok=True)
 
     plt.savefig(plot_dir, dpi=480)
@@ -116,90 +172,95 @@ def run_replot(args):
 
 
 def plot_3x3_figure(args):
-    """Generate a 3x3 figure with synthetic, MNIST, and CIFAR10 data for dims 10, 20, 100"""
-    
-    # Set up the figure with 8.5 inches width
     fig_width = 8.5
-    fig_height = fig_width * 0.5 # Adjust height proportionally
+    fig_height = fig_width * 0.5
     fig, axes = plt.subplots(3, 3, figsize=(fig_width, fig_height))
-    
-    # Set font size to 24
-    plt.rcParams.update({'font.size': 20})
-    
-    # Custom palette matching the existing code
-    # custom_palette = {'MHN': '#37373E', 'DAM': '#86928B', 'Karcher-Flow':'#FF6B6B'}
-    
-    # Define datasets and dimensions
-    datasets = ['synthetic', 'mnist', 'cifar10']
+
+    plt.rcParams.update({"font.size": 20})
+
+    datasets = ["synthetic", "mnist", "cifar10"]
     dims = [10, 20, 100]
-    
-    # Track legend - only show once
-    legend_shown = False
-    
+
     for row, dataset in enumerate(datasets):
         for col, dim in enumerate(dims):
             ax = axes[row, col]
-            
-            # Load CSV file
+
             if dataset == "synthetic":
-                csv_path = Path(args.output_dir) / f"dim{dim}" / f"Radius{args.mem_R}" / "result.csv"
+                csv_path = (
+                    Path(args.output_dir) / f"dim{dim}" / f"Radius{args.mem_R}" / "result.csv"
+                )
             else:
-                csv_path = Path(args.output_dir) / dataset / f"dim{dim}" / "result.csv"
-            
+                csv_path = (
+                    Path(args.output_dir)
+                    / dataset
+                    / f"pca{dim}"
+                    / f"Radius{args.mem_R}"
+                    / "result.csv"
+                )
+
             if not csv_path.exists():
-                ax.text(0.5, 0.5, f"CSV not found:\n{csv_path}", 
-                       ha='center', va='center', transform=ax.transAxes, fontsize=16)
+                ax.text(
+                    0.5,
+                    0.5,
+                    f"CSV not found:\n{csv_path}",
+                    ha="center",
+                    va="center",
+                    transform=ax.transAxes,
+                    fontsize=16,
+                )
                 ax.set_xticks([])
                 ax.set_yticks([])
                 continue
-            
+
             df = pd.read_csv(csv_path)
-            
-            # Plot the data
-            sns.lineplot(data=df, x="M", y="recall rate", hue="model", 
-                        errorbar='sd', marker='o', markersize=8, alpha=0.7, 
-                        err_style='bars', ax=ax)
-            
-            # Set log scale
+
+            sns.lineplot(
+                data=df,
+                x="M",
+                y="recall rate",
+                hue="model",
+                errorbar="sd",
+                marker="o",
+                markersize=8,
+                alpha=0.7,
+                err_style="bars",
+                ax=ax,
+            )
+
             ax.set_xscale("log")
-            
-            # Remove title
             ax.set_title("")
-            
-            # Only rightmost column, middle row has y-label on the right
+
             if col == 0 and row == 1:
                 ax.set_ylabel("Recall rate", fontsize=20)
             else:
                 ax.set_ylabel("")
-            
-            # Only bottom row has x-label
+
             if row == 2 and col == 1:
                 ax.set_xlabel("M", fontsize=20)
             else:
                 ax.set_xlabel("")
                 ax.tick_params(labelbottom=False)
-            
-            # Add legend only on the middle top figure (row 0, col 1)
+
             if row == 0 and col == 1:
                 handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles, labels, fontsize=20, loc='upper center', bbox_to_anchor=(0.5, 1.73), ncol=3)
+                ax.legend(
+                    handles,
+                    labels,
+                    fontsize=20,
+                    loc="upper center",
+                    bbox_to_anchor=(0.5, 1.73),
+                    ncol=3,
+                )
             else:
                 ax.legend().remove()
-            
-            # Set tick label sizes
-            ax.tick_params(labelsize=20)
-    
-    # Reduce spacing between subplots
-    # plt.tight_layout(pad=0.5, h_pad=0.3, w_pad=0.3)
-    
-    # Save the figure
-    output_path =  "./3x3_capacity_figure_r3.png"
-    # output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=480, bbox_inches='tight')
-    plt.close()
-    
-    print(f"3x3 figure saved to {output_path}")
 
+            ax.tick_params(labelsize=20)
+
+    output_path = "./3x3_capacity_figure_r3.png"
+    plt.savefig(output_path, dpi=480, bbox_inches="tight")
+    plt.close()
+
+    print(f"3x3 figure saved to {output_path}")
 
 
 def main():
@@ -213,20 +274,26 @@ def main():
     logger.info("getting args")
 
     args = get_args()
-    # plot_3x3_figure(args)
-    # raise Exception
 
-    sns.set_theme(rc={
-        'axes.titlesize': 20,    # Title font size
-        'axes.labelsize': 20,    # X and Y label font size
-        'legend.fontsize': 16,   # Legend text font size
-        'legend.title_fontsize': 18, # Legend title font size
-        'xtick.labelsize': 16,   # X tick label font size
-        'ytick.labelsize': 16,    # Y tick label font size
-        "font.family": "serif",
-        "font.serif": ["Courier New"]
-    })
-    sns.set_style("whitegrid") 
+    import torch
+
+    torch.manual_seed(args.seed)
+    if str(args.device).startswith("cuda"):
+        torch.cuda.manual_seed_all(args.seed)
+
+    sns.set_theme(
+        rc={
+            "axes.titlesize": 20,
+            "axes.labelsize": 20,
+            "legend.fontsize": 16,
+            "legend.title_fontsize": 18,
+            "xtick.labelsize": 16,
+            "ytick.labelsize": 16,
+            "font.family": "serif",
+            "font.serif": ["Courier New"],
+        }
+    )
+    sns.set_style("whitegrid")
 
     if args.replot is True:
         logger.info("Re generating figures...")
@@ -234,38 +301,31 @@ def main():
 
     else:
 
-        result_data = {"model": [], "recall rate": [], "M": [], "Geometry":[]}
+        result_data = {"model": [], "recall rate": [], "M": [], "Geometry": []}
 
         logger.info("Start running")
 
         M_min, M_max = args.M_min, args.M_max
-        K = 15  # number of intervals
+        K = 15
         r = (M_max / M_min) ** (1 / K)
 
         M_values = M_min * r ** np.arange(K + 1)
         M_values = np.round(M_values).astype(int)
 
-
         for M in M_values:
 
             for i in range(args.n_trials):
 
-                identity_phi_rate = run_recall_hyperbolic(args, "identity", M, int(i + M))
+                identity_phi_rate = run_recall_hyperbolic(
+                    args, "identity", M, int(i + M)
+                )
                 result_data["model"].append("Karcher-Flow")
-                # result_data["model"].append("geo_distance")
-                # result_data["model"].append("square_distance")
 
                 result_data["recall rate"].append(identity_phi_rate)
-                # result_data["recall rate"].append(geo_dist_phi_rate)
-                # result_data["recall rate"].append(square_dist_phi_rate)
 
                 result_data["M"].append(M)
-                # result_data["M"].append(M)
-                # result_data["M"].append(M)
 
                 result_data["Geometry"].append("H")
-                # result_data["Geometry"].append("H")
-                # result_data["Geometry"].append("H")
 
                 dam_rate = run_recall_dam(args, M, int(i + M))
                 mhn_rate = run_recall_mhn(args, M, int(i + M))
@@ -285,22 +345,47 @@ def main():
         df = pd.DataFrame(result_data)
         dataset = getattr(args, "dataset", "synthetic")
         if dataset == "synthetic":
-            output_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/result.csv"))
+            output_dir = Path(
+                args.output_dir
+                + str("/dim")
+                + str(args.d)
+                + str("/Radius")
+                + str(args.mem_R)
+                + str("/result.csv")
+            )
         else:
-            dim_str = str(args.pca_dim) if args.pca_dim else str(args.d)
-            output_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/result.csv"))
+            output_dir, _ = _image_csv_plot_paths(args)
         output_dir.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_dir)
 
         plt.figure(figsize=(8, 5))
 
-        custom_palette = {'MHN': '#37373E', 'DAM': '#86928B', 'Karcher-Flow':'#FF6B6B', 'geo_distance':'#FFAC6B', 'square_distance': '#FBB7C0'}
+        custom_palette = {
+            "MHN": "#37373E",
+            "DAM": "#86928B",
+            "Karcher-Flow": "#FF6B6B",
+            "geo_distance": "#FFAC6B",
+            "square_distance": "#FBB7C0",
+        }
 
-        ax = sns.lineplot(data=df, x="M", y="recall rate", hue="model", errorbar='sd', marker='o',markersize=10, alpha=0.7, palette=custom_palette, err_style='bars') # style="Geometry", 
+        ax = sns.lineplot(
+            data=df,
+            x="M",
+            y="recall rate",
+            hue="model",
+            errorbar="sd",
+            marker="o",
+            markersize=10,
+            alpha=0.7,
+            palette=custom_palette,
+            err_style="bars",
+        )
 
-        # Title and labels
-        dim_str = str(args.pca_dim) if (dataset != "synthetic" and args.pca_dim) else str(args.d)
-        title_str = f"Recall Rate vs M ({dataset}, d={dim_str})" if dataset != "synthetic" else f"Recall Rate vs M (d={args.d})"
+        if dataset != "synthetic":
+            dim_str = image_title_dim(args)
+            title_str = f"Recall Rate vs M ({dataset}, d={dim_str})"
+        else:
+            title_str = f"Recall Rate vs M (d={args.d})"
         ax.set_title(title_str)
         ax.set_xlabel("M")
         ax.set_ylabel("Recall rate")
@@ -311,13 +396,21 @@ def main():
         plt.tight_layout(pad=0.1)
 
         if dataset == "synthetic":
-            plot_dir = Path(args.output_dir + str("/dim") + str(args.d) + str("/Radius") + str(args.mem_R) + str("/recall_plot.png"))
+            plot_dir = Path(
+                args.output_dir
+                + str("/dim")
+                + str(args.d)
+                + str("/Radius")
+                + str(args.mem_R)
+                + str("/recall_plot.png")
+            )
         else:
-            plot_dir = Path(args.output_dir + str("/") + dataset + str("/dim") + dim_str + str("/recall_plot.png"))
+            _, plot_dir = _image_csv_plot_paths(args)
         plot_dir.parent.mkdir(parents=True, exist_ok=True)
 
         plt.savefig(plot_dir, dpi=480)
         plt.close()
 
 
-main()
+if __name__ == "__main__":
+    main()

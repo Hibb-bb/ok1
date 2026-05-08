@@ -12,9 +12,48 @@ import geomstats.backend as gs
 
 from geomstats.geometry._hyperbolic import _Hyperbolic
 from geomstats.geometry.base import LevelSet
-from geomstats.geometry.minkowski import Minkowski
+from geomstats.geometry.euclidean import Euclidean
+from geomstats.geometry.minkowski import MinkowskiMetric
 from geomstats.geometry.riemannian_metric import RiemannianMetric
 from geomstats.vectorization import repeat_out
+
+
+class MinkowskiMetricDeviceSafe(MinkowskiMetric):
+    """Minkowski metric with a CUDA-safe inner product.
+
+    The constant ``metric_matrix_`` is created on CPU at init; with the PyTorch
+    backend, ``squared_norm`` / ``inner_product`` must einsum against tensors
+    on the same device as the tangent vectors.
+    """
+
+    def inner_product(self, tangent_vec_a, tangent_vec_b, base_point=None):
+        inner_prod_mat = self.metric_matrix(base_point)
+        ref = tangent_vec_a
+        if hasattr(inner_prod_mat, "device") and hasattr(ref, "device"):
+            if inner_prod_mat.device != ref.device or inner_prod_mat.dtype != ref.dtype:
+                inner_prod_mat = inner_prod_mat.to(
+                    device=ref.device, dtype=ref.dtype
+                )
+        aux = gs.einsum("...j,...jk->...k", tangent_vec_a, inner_prod_mat)
+        return gs.dot(aux, tangent_vec_b)
+
+
+def _taylor_exp_even_func_device_safe(point, taylor_function, order=5, tol=None):
+    """geomstats ``taylor_exp_even_func`` with Taylor coeffs on ``point``'s device.
+
+    The stock helper builds coefficient tensors on CPU while ``point`` can be CUDA,
+    which breaks the einsum in ``exp`` / ``log``.
+    """
+    if tol is None:
+        tol = utils.EPSILON
+    coeffs = gs.array(taylor_function["coefficients"][:order])
+    if hasattr(point, "device"):
+        coeffs = coeffs.to(device=point.device, dtype=point.dtype)
+    powers = gs.stack([point**k for k in range(order)], axis=0)
+    approx = gs.einsum("k,k...->...", coeffs, powers)
+    point_ = gs.where(gs.abs(point) <= tol, tol, point)
+    exact = taylor_function["function"](gs.sqrt(point_))
+    return gs.where(gs.abs(point) < tol, approx, exact)
 
 
 class HyperboloidKappa(_Hyperbolic, LevelSet):
@@ -45,7 +84,9 @@ class HyperboloidKappa(_Hyperbolic, LevelSet):
         return HyperboloidMetricKappa
 
     def _define_embedding_space(self):
-        return Minkowski(self.dim + 1)
+        space = Euclidean(self.dim + 1, equip=False)
+        space.equip_with_metric(MinkowskiMetricDeviceSafe)
+        return space
 
     def submersion(self, point):
         """Level-set function defining the hyperboloid: <x,x>_L + R^2 = 0."""
@@ -133,8 +174,8 @@ class HyperboloidMetricKappa(RiemannianMetric):
         z = norm_tv / R
         z2 = z**2
 
-        coef_1 = utils.taylor_exp_even_func(z2, utils.cosh_close_0, order=5)
-        coef_2 = utils.taylor_exp_even_func(z2, utils.sinch_close_0, order=5)
+        coef_1 = _taylor_exp_even_func_device_safe(z2, utils.cosh_close_0, order=5)
+        coef_2 = _taylor_exp_even_func_device_safe(z2, utils.sinch_close_0, order=5)
 
         # exp = cosh(z)*base + R*sinch(z)*tangent_vec
         exp = gs.einsum("...,...j->...j", coef_1, base_point) + gs.einsum(
@@ -151,8 +192,12 @@ class HyperboloidMetricKappa(RiemannianMetric):
         angle = self.dist(base_point, point) / R
         angle2 = angle**2
 
-        coef_1 = utils.taylor_exp_even_func(angle2, utils.inv_sinch_close_0, order=4)
-        coef_2 = utils.taylor_exp_even_func(angle2, utils.inv_tanh_close_0, order=4)
+        coef_1 = _taylor_exp_even_func_device_safe(
+            angle2, utils.inv_sinch_close_0, order=4
+        )
+        coef_2 = _taylor_exp_even_func_device_safe(
+            angle2, utils.inv_tanh_close_0, order=4
+        )
 
         # Same algebraic form as Geomstats; only "angle" is scaled.
         log_term_1 = gs.einsum("...,...j->...j", coef_1, point)
