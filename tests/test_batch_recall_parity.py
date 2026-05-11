@@ -1,6 +1,7 @@
 """Compare batched vs scalar Euclidean recall on tiny random memory."""
 
-import argparse
+from argparse import Namespace
+
 import numpy as np
 import torch
 
@@ -72,7 +73,7 @@ def test_dam_batched_matches_scalar():
 
 
 def test_run_recall_mhn_batch_vs_no_batch():
-    args = argparse.Namespace(
+    args = Namespace(
         dataset="synthetic",
         d=5,
         mem_R=1.5,
@@ -98,7 +99,7 @@ def test_karcher_batched_matches_scalar():
 
     from hyperboloid import HyperboloidKappa
     from memory_recall import (
-        foo,
+        identity_phi,
         make_query_from_target,
         update,
         update_karcher_batched,
@@ -121,7 +122,7 @@ def test_karcher_batched_matches_scalar():
                 geom,
                 make_query_from_target(geom, mem[t], 0.15, q_rng2),
                 mem,
-                phi=foo,
+                phi=identity_phi,
                 max_steps=12,
             )
             for t in range(M)
@@ -135,7 +136,7 @@ def test_karcher_batched_matches_scalar():
 
 
 def test_run_recall_hyperbolic_batch_vs_no_batch():
-    args = argparse.Namespace(
+    args = Namespace(
         dataset="synthetic",
         d=5,
         mem_R=1.5,

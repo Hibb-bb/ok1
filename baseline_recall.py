@@ -10,7 +10,7 @@ def l2_normalize(x, axis=-1, eps=1e-12):
     return x / (np.linalg.norm(x, axis=axis, keepdims=True) + eps)
 
 
-def update_mhn(query, memory, beta=1.0, scale=False, normalize=True, max_steps=10):
+def update_mhn(query, memory, beta=1, scale=False, normalize=True, max_steps=10):
     memory = np.asarray(memory, dtype=np.float64)
     query = np.asarray(query, dtype=np.float64)
     beta = np.float64(beta)
@@ -58,8 +58,6 @@ def update_mhn_batched(
         mem_use = torch.nn.functional.normalize(mem_raw, dim=1, eps=1e-12) if normalize else mem_raw
         Q_use = torch.nn.functional.normalize(Q, dim=1, eps=1e-12) if normalize else Q
         logits = mem_use @ Q_use.T
-        if scale:
-            logits = logits / sqrtn
         w = torch.softmax(beta * logits, dim=0)
         max_w, argmax = w.max(dim=0)
         newly = max_w >= (1.0 - tol)
@@ -74,7 +72,7 @@ def update_mhn_batched(
     return torch.where(converged.unsqueeze(1), output, Q)
 
 
-def update_dam(query, memory, n_order=10, beta=1.0, max_steps=10):
+def update_dam(query, memory, n_order=10, beta=1, max_steps=10):
     memory = np.asarray(memory, dtype=np.float64)
     query = np.asarray(query, dtype=np.float64)
     beta = np.float64(beta)
@@ -88,7 +86,7 @@ def update_dam(query, memory, n_order=10, beta=1.0, max_steps=10):
 
         if max_weight >= 1 - tol:
             return memory[max_weight_idx]
-        query = score @ memory
+        query = w @ memory
     return query
 
 
@@ -129,8 +127,8 @@ def make_query_from_target_euclidean(target, sigma, rng):
 
 def _load_memory_numpy(args, M, seed):
     rng = np.random.default_rng(seed)
-    n = int(getattr(args, "d", getattr(args, "n_dim", 20)))
-    mem_R = float(getattr(args, "mem_R", getattr(args, "R", 3.0)))
+    n = int(getattr(args, "d", 20))
+    mem_R = float(getattr(args, "mem_R", 3.0))
     dataset = getattr(args, "dataset", "synthetic")
     if dataset == "synthetic":
         from sample_euclidean_memory import uniform_sampling_in_ball

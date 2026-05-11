@@ -5,6 +5,7 @@ import os
 
 # --- Configuration ---
 data_dir = './outputs/dim3'  # Path to your extracted folder
+output_path = 'icml_simulation_results.pdf'
 font_size = 20
 icml_width = 6.75  # Standard ICML double-column text width in inches
 
@@ -89,5 +90,5 @@ else:
     ax2.grid(True, which="both", ls="--", alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig('icml_simulation_results.pdf', bbox_inches='tight')
+    plt.savefig(output_path, bbox_inches='tight')
     # plt.show()

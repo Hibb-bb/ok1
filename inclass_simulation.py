@@ -9,6 +9,7 @@ recall_config.early_set_geomstats_backend_from_argv()
 
 import argparse
 import logging
+import os
 import warnings
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from memory_recall import (
     generate_image_queries,
     update,
     update_karcher_batched,
-    foo as identity_phi,
+    identity_phi,
 )
 from baseline_recall import (
     update_mhn_batched,
@@ -43,6 +44,7 @@ from recall_config import (
     resolve_torch_device,
     set_global_torch_seed,
 )
+from wandb_utils import init_wandb_run
 
 warnings.filterwarnings(
     "error",
@@ -108,6 +110,37 @@ def get_args():
     ap.add_argument("--n-order", type=int, default=10)
     ap.add_argument("--tol", type=float, default=0.001)
     ap.add_argument("--replot", action="store_true")
+    ap.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    ap.add_argument(
+        "--wandb-project",
+        type=str,
+        default=os.environ.get("WANDB_PROJECT", None),
+        help="W&B project (or env WANDB_PROJECT)",
+    )
+    ap.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=os.environ.get("WANDB_ENTITY", None),
+        help="W&B entity/team (or env WANDB_ENTITY)",
+    )
+    ap.add_argument(
+        "--wandb-group",
+        type=str,
+        default=os.environ.get("WANDB_GROUP", None),
+        help="W&B group for grouping multiple runs (or env WANDB_GROUP)",
+    )
+    ap.add_argument(
+        "--wandb-name",
+        type=str,
+        default=os.environ.get("WANDB_NAME", None),
+        help="W&B run name (or env WANDB_NAME). Defaults to an auto-derived name.",
+    )
+    ap.add_argument(
+        "--wandb-tags",
+        type=str,
+        default=os.environ.get("WANDB_TAGS", None),
+        help="Comma-separated W&B tags (or env WANDB_TAGS)",
+    )
     args = ap.parse_args()
     args.use_batch = not args.no_batch
     return args
@@ -130,6 +163,28 @@ def class_label(dataset: str, class_id: int) -> str:
     if dataset == "mnist":
         return MNIST_CLASSES[class_id]
     return CIFAR10_CLASSES[class_id]
+
+
+def _wandb_init_inclass(args, class_id: int):
+    feat = image_feature_dir(args)
+    run_name = (
+        args.wandb_name
+        or f"inclass/{args.dataset}/class{class_id}/{feat}/R{args.mem_R}"
+    )
+    extra_tags = [
+        "sim:inclass",
+        f"dataset:{args.dataset}",
+        f"class:{class_id}",
+        f"feat:{feat}",
+        f"R:{args.mem_R}",
+        f"device:{args.device}",
+    ]
+    return init_wandb_run(
+        args,
+        project="ICML-Hyperbolic-Inclass",
+        run_name=run_name,
+        extra_tags=extra_tags,
+    )
 
 
 def run_one_trial_mhn(args, class_id, M, seed):
@@ -303,7 +358,7 @@ def make_plot(df, args, class_id: int, plot_path: Path):
     plt.close(fig)
 
 
-def run_simulation(args, class_id: int, logger):
+def run_simulation(args, class_id: int, logger, wandb_run=None):
     csv_path, plot_path = output_paths(args, class_id)
     label = class_label(args.dataset, class_id)
     logger.info("Class %s (%s)", class_id, label)
@@ -313,23 +368,67 @@ def run_simulation(args, class_id: int, logger):
     M_values = np.round(args.M_min * r ** np.arange(K + 1)).astype(int)
 
     result_data = {"model": [], "recall rate": [], "M": []}
-    for M in M_values:
+    for m_idx, M in enumerate(M_values):
         logger.info("  M=%s", M)
+        trial_rates = {"MHN": [], "DAM": [], "Karcher-Flow": []}
         for i in range(args.n_trials):
             s = int(i + M)
+            mhn_rate = run_one_trial_mhn(args, class_id, M, s)
+            dam_rate = run_one_trial_dam(args, class_id, M, s)
+            kf_rate = run_one_trial_hyperbolic(args, class_id, M, s)
+
+            trial_rates["MHN"].append(mhn_rate)
+            trial_rates["DAM"].append(dam_rate)
+            trial_rates["Karcher-Flow"].append(kf_rate)
+
             result_data["model"].append("MHN")
-            result_data["recall rate"].append(run_one_trial_mhn(args, class_id, M, s))
+            result_data["recall rate"].append(mhn_rate)
             result_data["M"].append(M)
 
             result_data["model"].append("DAM")
-            result_data["recall rate"].append(run_one_trial_dam(args, class_id, M, s))
+            result_data["recall rate"].append(dam_rate)
             result_data["M"].append(M)
 
             result_data["model"].append("Karcher-Flow")
-            result_data["recall rate"].append(
-                run_one_trial_hyperbolic(args, class_id, M, s)
-            )
+            result_data["recall rate"].append(kf_rate)
             result_data["M"].append(M)
+
+            if wandb_run is not None:
+                step = int(m_idx * args.n_trials + i)
+                wandb_run.log(
+                    {
+                        "step": step,
+                        "M": int(M),
+                        "trial": int(i),
+                        "trial/recall_MHN": float(mhn_rate),
+                        "trial/recall_DAM": float(dam_rate),
+                        "trial/recall_KarcherFlow": float(kf_rate),
+                    }
+                )
+
+        if wandb_run is not None:
+
+            def _mean_sd(vals: list[float]) -> tuple[float, float]:
+                if not vals:
+                    return 0.0, 0.0
+                mu = float(np.mean(vals))
+                sd = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
+                return mu, sd
+
+            mhn_mu, mhn_sd = _mean_sd(trial_rates["MHN"])
+            dam_mu, dam_sd = _mean_sd(trial_rates["DAM"])
+            kf_mu, kf_sd = _mean_sd(trial_rates["Karcher-Flow"])
+            wandb_run.log(
+                {
+                    "M": int(M),
+                    "agg/recall_MHN": mhn_mu,
+                    "agg/recall_sd_MHN": mhn_sd,
+                    "agg/recall_DAM": dam_mu,
+                    "agg/recall_sd_DAM": dam_sd,
+                    "agg/recall_KarcherFlow": kf_mu,
+                    "agg/recall_sd_KarcherFlow": kf_sd,
+                }
+            )
 
     df = pd.DataFrame(result_data)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -383,7 +482,12 @@ def main():
         if args.replot:
             run_replot(args, cid)
         else:
-            run_simulation(args, cid, logger)
+            wandb_run = _wandb_init_inclass(args, cid)
+            try:
+                run_simulation(args, cid, logger, wandb_run=wandb_run)
+            finally:
+                if wandb_run is not None:
+                    wandb_run.finish()
 
 
 if __name__ == "__main__":

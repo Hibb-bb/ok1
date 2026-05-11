@@ -9,22 +9,7 @@ import torch
 from recall_config import resolve_pca_dim_images, resolve_torch_device, set_global_torch_seed
 
 
-def hyperbolic_distance_from_lorentz_ip(lorentz_ip, kappa):
-
-    if kappa >= 0:
-        raise ValueError("kappa must be < 0.")
-    R = 1.0 / np.sqrt(-kappa)
-
-    # cosh(d/R) = - <x,y>_L / R^2
-    z = -lorentz_ip / (R**2)
-
-    # numerical safety: z must be >= 1
-    z = np.clip(z, 1.0, 1e24)
-
-    return R * np.arccosh(z)
-
-
-def foo(x, kappa=None):
+def identity_phi(x, kappa=None):
     return -x
 
 
@@ -43,13 +28,13 @@ def _gs_np(x):
 
 
 def _softmax_weights(score):
-    """Match legacy: softmax(-10 * score), dim 0."""
+    """Softmax over axis/dim 0; works on both torch tensors and numpy arrays."""
     if isinstance(score, torch.Tensor):
-        return torch.softmax(-10.0 * score, dim=0)
-    return softmax(-10.0 * np.asarray(score), axis=0)
+        return torch.softmax(score, dim=0)
+    return softmax(np.asarray(score), axis=0)
 
 
-def update(geometry, query, memory, phi=foo, max_steps=10):
+def update(geometry, query, memory, phi=identity_phi, max_steps=10):
     query = geometry.regularize(query)
     memory = geometry.regularize(memory)
     tol = 0.01
@@ -58,14 +43,14 @@ def update(geometry, query, memory, phi=foo, max_steps=10):
 
         tangent_memory = geometry.metric.log(memory, base_point=query)
 
-        if phi == foo:
+        if phi == identity_phi:
             lorentz_inner = geometry.embedding_space.metric.inner_product(query, memory)
             score = phi(lorentz_inner, geometry.curvature)
 
         else:
             score = phi(geometry.metric.dist(query, memory))
 
-        weights = _softmax_weights(score)
+        weights = _softmax_weights(10*score)
 
         if isinstance(weights, torch.Tensor):
             max_weight_idx = int(torch.argmax(weights).item())
@@ -118,7 +103,7 @@ def update_karcher_batched(
         ip = geometry.embedding_space.metric.inner_product(q_flat, m_flat)
         inner_mb = gs.reshape(ip, (B, Mdim)).T
         score_mb = -inner_mb
-        w = _softmax_weights(score_mb)
+        w = _softmax_weights(10*score_mb)
         w_np = np.asarray(w, dtype=np.float64)
         max_w = w_np.max(axis=0)
         argmax = np.argmax(w_np, axis=0)
@@ -204,7 +189,7 @@ def generate_image_queries(geometry, euclidean_vectors, sigma, rng):
 
 def run_recall_hyperbolic(args, phi_choice, M, seed):
     if phi_choice == "identity":
-        phi = foo
+        phi = identity_phi
     elif phi_choice == "geo_distance":
         phi = geo_distance
     elif phi_choice == "square_distance":

@@ -2,9 +2,19 @@
 __pycache__/
 *.py[cod]
 
+# Virtual environment
+.venv/
+
 # Local data / experiment outputs
 data/
 outputs/
+
+# W&B local run logs
+wandb/
+
+# Slurm logs
+*.out
+*.err
 
 # Archives
 *.tar.gz

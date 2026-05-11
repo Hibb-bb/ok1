@@ -14,28 +14,6 @@ except ImportError:
     HAS_TORCHVISION = False
 
 
-def rowwise_l2_norms(vectors: np.ndarray) -> np.ndarray:
-    """L2 norm of each row: (N, d) -> (N,)."""
-    return np.linalg.norm(np.asarray(vectors), axis=1)
-
-
-def pca_norm_summary(vectors: np.ndarray) -> dict:
-    """Summary of the distribution of per-row L2 norms (e.g. PCA coordinates)."""
-    norms = rowwise_l2_norms(vectors)
-    return {
-        "count": int(norms.size),
-        "mean": float(np.mean(norms)),
-        "std": float(np.std(norms)),
-        "min": float(np.min(norms)),
-        "max": float(np.max(norms)),
-        "p05": float(np.percentile(norms, 5)),
-        "p25": float(np.percentile(norms, 25)),
-        "p50": float(np.percentile(norms, 50)),
-        "p75": float(np.percentile(norms, 75)),
-        "p95": float(np.percentile(norms, 95)),
-    }
-
-
 def load_mnist_images(
     num_images: int,
     pca_dim: Optional[int] = None,
@@ -66,14 +44,19 @@ def load_mnist_images(
     dataset = torchvision.datasets.MNIST(
         root='./data', train=True, download=True, transform=transform
     )
-    
-    # Sample random indices
-    indices = rng.integers(0, len(dataset), size=num_images)
-    
+
+    if num_images > len(dataset):
+        raise ValueError(
+            f"Requested {num_images} images but MNIST train set has only {len(dataset)}."
+        )
+
+    # Sample random indices without replacement
+    indices = rng.choice(len(dataset), size=num_images, replace=False)
+
     # Load and flatten images
     images = []
     for idx in indices:
-        img, _ = dataset[idx]  # Ignore labels
+        img, _ = dataset[int(idx)]  # Ignore labels
         images.append(img.numpy().flatten())  # (784,)
     
     images = np.array(images, dtype=np.float64)  # (num_images, 784)
@@ -124,20 +107,25 @@ def load_cifar10_images(
     dataset = torchvision.datasets.CIFAR10(
         root='./data', train=True, download=True, transform=transform
     )
-    
-    # Sample random indices
-    indices = rng.integers(0, len(dataset), size=num_images)
-    
+
+    if num_images > len(dataset):
+        raise ValueError(
+            f"Requested {num_images} images but CIFAR10 train set has only {len(dataset)}."
+        )
+
+    # Sample random indices without replacement
+    indices = rng.choice(len(dataset), size=num_images, replace=False)
+
     # Load and flatten images
     images = []
     for idx in indices:
-        img, _ = dataset[idx]  # Ignore labels
+        img, _ = dataset[int(idx)]  # Ignore labels
         images.append(img.numpy().flatten())  # (3072,)
     
     images = np.array(images, dtype=np.float64)  # (num_images, 3072)
     
     # Normalize to [0, 1] (already done by ToTensor, but ensure)
-    images = np.clip(images, 1e-4, 1.0)
+    images = np.clip(images, 1e-6, 1.0)
     images = images * R
 
     pca_fitted = None
@@ -247,74 +235,3 @@ def sample_images_from_dataset(
         raise ValueError(f"Unknown dataset: {dataset_name}. Use 'mnist' or 'cifar10'")
     
     return images, None
-
-
-# if __name__ == "__main__":
-#     import argparse
-
-#     ap = argparse.ArgumentParser(
-#         description="Load MNIST/CIFAR-10 PCA embeddings and summarize row L2 norm distribution."
-#     )
-#     ap.add_argument("--dataset", default="cifar10", choices=["cifar10", "mnist"])
-#     ap.add_argument("--M", type=int, default=5000, help="Number of random training images")
-#     ap.add_argument("--pca-dim", type=int, required=True)
-#     ap.add_argument("--R", type=float, default=2.0)
-#     ap.add_argument("--seed", type=int, default=0)
-#     ap.add_argument(
-#         "-o",
-#         "--output",
-#         type=str,
-#         default=None,
-#         help="Figure path (png). Default: {dataset}_pca_norms_d{DIM}_R{R}_M{M}.png",
-#     )
-#     args = ap.parse_args()
-#     out_path = args.output
-#     if out_path is None:
-#         out_path = (
-#             f"{args.dataset}_pca_norms_d{args.pca_dim}_R{args.R}_M{args.M}.png"
-#         )
-
-#     rng = np.random.default_rng(args.seed)
-#     images, _ = sample_images_from_dataset(
-#         args.dataset, args.M, dim=args.pca_dim, R=args.R, rng=rng
-#     )
-#     norms = rowwise_l2_norms(images)
-#     summary = pca_norm_summary(images)
-#     stats_lines = [
-#         f"{k}: {v:.6g}" if isinstance(v, float) else f"{k}: {v}"
-#         for k, v in summary.items()
-#     ]
-#     stats_text = "\n".join(stats_lines)
-
-#     import matplotlib.pyplot as plt
-
-#     fig, ax = plt.subplots(figsize=(7, 5))
-#     ax.hist(
-#         norms,
-#         bins=min(50, max(10, args.M // 100)),
-#         density=True,
-#         alpha=0.85,
-#         color="steelblue",
-#         edgecolor="white",
-#         linewidth=0.5,
-#     )
-#     ax.set_xlabel("Row L2 norm")
-#     ax.set_ylabel("Density")
-#     ax.set_title(
-#         f"{args.dataset} PCA row norms (d={args.pca_dim}, R={args.R}, M={args.M}, seed={args.seed})"
-#     )
-#     ax.text(
-#         0.97,
-#         0.97,
-#         stats_text,
-#         transform=ax.transAxes,
-#         fontsize=9,
-#         verticalalignment="top",
-#         horizontalalignment="right",
-#         family="monospace",
-#         bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.72},
-#     )
-#     fig.tight_layout()
-#     fig.savefig(out_path, dpi=150)
-#     plt.close(fig)
-#     print(f"Saved {out_path}")

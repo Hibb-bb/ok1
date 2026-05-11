@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from argparse import Namespace
+from pathlib import Path
 from typing import Optional
 
 
@@ -46,6 +47,19 @@ def image_title_dim(args: Namespace) -> str:
         d = 784 if args.dataset == "mnist" else 3072
         return f"pixels ({d})"
     return str(resolve_pca_dim_images(args))
+
+
+def synthetic_csv_plot_paths(args: Namespace) -> tuple[Path, Path]:
+    """Output paths for synthetic-dataset capacity runs."""
+    base = Path(args.output_dir) / f"dim{args.d}" / f"Radius{args.mem_R}"
+    return base / "result.csv", base / "recall_plot.png"
+
+
+def image_csv_plot_paths(args: Namespace) -> tuple[Path, Path]:
+    """Output paths for image-dataset capacity runs ('pixels' or 'pca{d}')."""
+    feat = image_feature_dir(args)
+    base = Path(args.output_dir) / args.dataset / feat / f"Radius{args.mem_R}"
+    return base / "result.csv", base / "recall_plot.png"
 
 
 def resolve_torch_device(device_str: str) -> "torch.device":

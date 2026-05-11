@@ -4,6 +4,7 @@ recall_config.early_set_geomstats_backend_from_argv()
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 import matplotlib
@@ -13,10 +14,16 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from recall_config import image_feature_dir, image_title_dim
+from recall_config import (
+    image_feature_dir,
+    image_title_dim,
+    image_csv_plot_paths,
+    synthetic_csv_plot_paths,
+)
 
 from memory_recall import run_recall_hyperbolic
 from baseline_recall import run_recall_dam, run_recall_mhn
+from wandb_utils import init_wandb_run
 
 import warnings
 
@@ -74,7 +81,7 @@ def get_args():
 
     ap.add_argument("--kappa", type=int, default=-1)
     ap.add_argument("--noise_sigma", type=float, default=0.5)
-    ap.add_argument("--beta", type=float, default=1.0)
+    ap.add_argument("--beta", type=float, default=10)
 
     ap.add_argument("--tol", type=float, default=0.001)
 
@@ -84,33 +91,51 @@ def get_args():
         action="store_true",
         help="Generate 3x3 figure with all datasets and dimensions",
     )
+    ap.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    ap.add_argument(
+        "--wandb-project",
+        type=str,
+        default=os.environ.get("WANDB_PROJECT", None),
+        help="W&B project (or env WANDB_PROJECT)",
+    )
+    ap.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=os.environ.get("WANDB_ENTITY", None),
+        help="W&B entity/team (or env WANDB_ENTITY)",
+    )
+    ap.add_argument(
+        "--wandb-group",
+        type=str,
+        default=os.environ.get("WANDB_GROUP", None),
+        help="W&B group for grouping multiple runs (or env WANDB_GROUP)",
+    )
+    ap.add_argument(
+        "--wandb-name",
+        type=str,
+        default=os.environ.get("WANDB_NAME", None),
+        help="W&B run name (or env WANDB_NAME). Defaults to an auto-derived name.",
+    )
+    ap.add_argument(
+        "--wandb-tags",
+        type=str,
+        default=os.environ.get("WANDB_TAGS", None),
+        help="Comma-separated W&B tags (or env WANDB_TAGS)",
+    )
 
     args = ap.parse_args()
     args.use_batch = not args.no_batch
     return args
 
 
-def _image_csv_plot_paths(args):
-    feat = image_feature_dir(args)
-    base = Path(args.output_dir) / args.dataset / feat / f"Radius{args.mem_R}"
-    return base / "result.csv", base / "recall_plot.png"
-
-
 def run_replot(args):
 
     dataset = getattr(args, "dataset", "synthetic")
     if dataset == "synthetic":
-        output_dir = Path(
-            args.output_dir
-            + str("/dim")
-            + str(args.d)
-            + str("/Radius")
-            + str(args.mem_R)
-            + str("/result.csv")
-        )
+        csv_path, plot_path = synthetic_csv_plot_paths(args)
     else:
-        output_dir, _ = _image_csv_plot_paths(args)
-    df = pd.read_csv(output_dir)
+        csv_path, plot_path = image_csv_plot_paths(args)
+    df = pd.read_csv(csv_path)
 
     plt.figure(figsize=(6, 5))
 
@@ -154,20 +179,8 @@ def run_replot(args):
 
     plt.tight_layout()
 
-    if dataset == "synthetic":
-        plot_dir = Path(
-            args.output_dir
-            + str("/dim")
-            + str(args.d)
-            + str("/Radius")
-            + str(args.mem_R)
-            + str("/recall_plot.png")
-        )
-    else:
-        _, plot_dir = _image_csv_plot_paths(args)
-    plot_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    plt.savefig(plot_dir, dpi=480)
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(plot_path, dpi=480)
     plt.close()
 
 
@@ -256,11 +269,30 @@ def plot_3x3_figure(args):
 
             ax.tick_params(labelsize=20)
 
-    output_path = "./3x3_capacity_figure_r3.png"
+    output_path = f"./3x3_capacity_figure_R{args.mem_R}.png"
     plt.savefig(output_path, dpi=480, bbox_inches="tight")
     plt.close()
 
     print(f"3x3 figure saved to {output_path}")
+
+
+def _wandb_init_capacity(args):
+    dataset = getattr(args, "dataset", "synthetic")
+    feat = image_feature_dir(args) if dataset != "synthetic" else f"dim{args.d}"
+    run_name = args.wandb_name or f"capacity/{dataset}/{feat}/R{args.mem_R}"
+    extra_tags = [
+        "sim:capacity",
+        f"dataset:{dataset}",
+        f"feat:{feat}",
+        f"R:{args.mem_R}",
+        f"device:{args.device}",
+    ]
+    return init_wandb_run(
+        args,
+        project=f"ICML-Hyperbolic-{args.dataset}",
+        run_name=run_name,
+        extra_tags=extra_tags,
+    )
 
 
 def main():
@@ -299,117 +331,144 @@ def main():
         logger.info("Re generating figures...")
         run_replot(args)
 
+    elif args.plot_3x3:
+        plot_3x3_figure(args)
+
     else:
+        wandb_run = _wandb_init_capacity(args)
+        try:
 
-        result_data = {"model": [], "recall rate": [], "M": [], "Geometry": []}
+            result_data = {"model": [], "recall rate": [], "M": [], "Geometry": []}
 
-        logger.info("Start running")
+            logger.info("Start running")
 
-        M_min, M_max = args.M_min, args.M_max
-        K = 15
-        r = (M_max / M_min) ** (1 / K)
+            M_min, M_max = args.M_min, args.M_max
+            K = 15
+            r = (M_max / M_min) ** (1 / K)
 
-        M_values = M_min * r ** np.arange(K + 1)
-        M_values = np.round(M_values).astype(int)
+            M_values = M_min * r ** np.arange(K + 1)
+            M_values = np.round(M_values).astype(int)
 
-        for M in M_values:
+            for m_idx, M in enumerate(M_values):
 
-            for i in range(args.n_trials):
+                trial_rates = {"MHN": [], "DAM": [], "Karcher-Flow": []}
 
-                identity_phi_rate = run_recall_hyperbolic(
-                    args, "identity", M, int(i + M)
-                )
-                result_data["model"].append("Karcher-Flow")
+                for i in range(args.n_trials):
+                    identity_phi_rate = run_recall_hyperbolic(
+                        args, "identity", M, int(i + M)
+                    )
+                    dam_rate = run_recall_dam(args, M, int(i + M))
+                    mhn_rate = run_recall_mhn(args, M, int(i + M))
 
-                result_data["recall rate"].append(identity_phi_rate)
+                    trial_rates["Karcher-Flow"].append(identity_phi_rate)
+                    trial_rates["DAM"].append(dam_rate)
+                    trial_rates["MHN"].append(mhn_rate)
 
-                result_data["M"].append(M)
+                    result_data["model"].append("Karcher-Flow")
+                    result_data["recall rate"].append(identity_phi_rate)
+                    result_data["M"].append(M)
+                    result_data["Geometry"].append("H")
 
-                result_data["Geometry"].append("H")
+                    result_data["model"].append("DAM")
+                    result_data["recall rate"].append(dam_rate)
+                    result_data["M"].append(M)
+                    result_data["Geometry"].append("E")
 
-                dam_rate = run_recall_dam(args, M, int(i + M))
-                mhn_rate = run_recall_mhn(args, M, int(i + M))
+                    result_data["model"].append("MHN")
+                    result_data["recall rate"].append(mhn_rate)
+                    result_data["M"].append(M)
+                    result_data["Geometry"].append("E")
 
-                result_data["model"].append("DAM")
-                result_data["model"].append("MHN")
+                    if wandb_run is not None:
+                        step = int(m_idx * args.n_trials + i)
+                        wandb_run.log(
+                            {
+                                "step": step,
+                                "M": int(M),
+                                "trial": int(i),
+                                "trial/recall_KarcherFlow": float(identity_phi_rate),
+                                "trial/recall_DAM": float(dam_rate),
+                                "trial/recall_MHN": float(mhn_rate),
+                            }
+                        )
 
-                result_data["recall rate"].append(dam_rate)
-                result_data["recall rate"].append(mhn_rate)
+                if wandb_run is not None:
 
-                result_data["M"].append(M)
-                result_data["M"].append(M)
+                    def _mean_sd(vals: list[float]) -> tuple[float, float]:
+                        if not vals:
+                            return 0.0, 0.0
+                        mu = float(np.mean(vals))
+                        sd = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
+                        return mu, sd
 
-                result_data["Geometry"].append("E")
-                result_data["Geometry"].append("E")
+                    kf_mu, kf_sd = _mean_sd(trial_rates["Karcher-Flow"])
+                    dam_mu, dam_sd = _mean_sd(trial_rates["DAM"])
+                    mhn_mu, mhn_sd = _mean_sd(trial_rates["MHN"])
+                    wandb_run.log(
+                        {
+                            "M": int(M),
+                            "agg/recall_KarcherFlow": kf_mu,
+                            "agg/recall_sd_KarcherFlow": kf_sd,
+                            "agg/recall_DAM": dam_mu,
+                            "agg/recall_sd_DAM": dam_sd,
+                            "agg/recall_MHN": mhn_mu,
+                            "agg/recall_sd_MHN": mhn_sd,
+                        }
+                    )
 
-        df = pd.DataFrame(result_data)
-        dataset = getattr(args, "dataset", "synthetic")
-        if dataset == "synthetic":
-            output_dir = Path(
-                args.output_dir
-                + str("/dim")
-                + str(args.d)
-                + str("/Radius")
-                + str(args.mem_R)
-                + str("/result.csv")
+            df = pd.DataFrame(result_data)
+            dataset = getattr(args, "dataset", "synthetic")
+            if dataset == "synthetic":
+                csv_path, plot_path = synthetic_csv_plot_paths(args)
+            else:
+                csv_path, plot_path = image_csv_plot_paths(args)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(csv_path)
+
+            plt.figure(figsize=(8, 5))
+
+            custom_palette = {
+                "MHN": "#37373E",
+                "DAM": "#86928B",
+                "Karcher-Flow": "#FF6B6B",
+                "geo_distance": "#FFAC6B",
+                "square_distance": "#FBB7C0",
+            }
+
+            ax = sns.lineplot(
+                data=df,
+                x="M",
+                y="recall rate",
+                hue="model",
+                errorbar="sd",
+                marker="o",
+                markersize=10,
+                alpha=0.7,
+                palette=custom_palette,
+                err_style="bars",
             )
-        else:
-            output_dir, _ = _image_csv_plot_paths(args)
-        output_dir.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(output_dir)
 
-        plt.figure(figsize=(8, 5))
+            if dataset != "synthetic":
+                dim_str = image_title_dim(args)
+                title_str = f"Recall Rate vs M ({dataset}, d={dim_str})"
+            else:
+                title_str = f"Recall Rate vs M (d={args.d})"
+            ax.set_title(title_str)
+            ax.set_xlabel("M")
+            ax.set_ylabel("Recall rate")
 
-        custom_palette = {
-            "MHN": "#37373E",
-            "DAM": "#86928B",
-            "Karcher-Flow": "#FF6B6B",
-            "geo_distance": "#FFAC6B",
-            "square_distance": "#FBB7C0",
-        }
+            ax.set_xscale("log")
+            ax.grid(True, which="both", linestyle="--", alpha=0.3)
 
-        ax = sns.lineplot(
-            data=df,
-            x="M",
-            y="recall rate",
-            hue="model",
-            errorbar="sd",
-            marker="o",
-            markersize=10,
-            alpha=0.7,
-            palette=custom_palette,
-            err_style="bars",
-        )
+            plt.tight_layout(pad=0.1)
 
-        if dataset != "synthetic":
-            dim_str = image_title_dim(args)
-            title_str = f"Recall Rate vs M ({dataset}, d={dim_str})"
-        else:
-            title_str = f"Recall Rate vs M (d={args.d})"
-        ax.set_title(title_str)
-        ax.set_xlabel("M")
-        ax.set_ylabel("Recall rate")
+            plot_path.parent.mkdir(parents=True, exist_ok=True)
+            plt.savefig(plot_path, dpi=480)
+            plt.close()
 
-        ax.set_xscale("log")
-        ax.grid(True, which="both", linestyle="--", alpha=0.3)
-
-        plt.tight_layout(pad=0.1)
-
-        if dataset == "synthetic":
-            plot_dir = Path(
-                args.output_dir
-                + str("/dim")
-                + str(args.d)
-                + str("/Radius")
-                + str(args.mem_R)
-                + str("/recall_plot.png")
-            )
-        else:
-            _, plot_dir = _image_csv_plot_paths(args)
-        plot_dir.parent.mkdir(parents=True, exist_ok=True)
-
-        plt.savefig(plot_dir, dpi=480)
-        plt.close()
+        finally:
+            if wandb_run is not None:
+                wandb_run.finish()
 
 
 if __name__ == "__main__":

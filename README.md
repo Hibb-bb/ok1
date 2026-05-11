@@ -4,6 +4,7 @@
 ```bash
 uv init
 uv venv .venv
+source .venv/bin/activate
 uv sync
 ```
 
@@ -75,3 +76,18 @@ salloc -p debug_a100 -N 1 -n 1 -c 8 --mem=40G -t 02:00:00
 srun --jobid=3172 --pty bash
 squeue -j <JOBID> -o "%.18i %.9P %.8T %.10M %.6D %R"
 ```
+
+
+salloc --account=p32593 --job-name=ok --nodes=1 --partition=gengpu --gres=gpu:a100:1 --ntasks-per-node=1 --cpus-per-task=16 --mem=80G --time=01:00:00
+
+
+p32234
+
+srun --jobid=7501129 --pty bash -l
+
+
+
+python capacity_simulation.py --dataset cifar10 --device cuda --no-pca \
+  --M-min 10 --M-max 1000 --n-trials 5 --max-steps 5 --mem-R 2 \
+  --wandb --wandb-group "test" \
+  --wandb-tags "sim:capacity,dataset:cifar10,feat:pixels,R:2,device:cuda"
