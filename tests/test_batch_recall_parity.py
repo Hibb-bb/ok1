@@ -5,12 +5,20 @@ from argparse import Namespace
 import numpy as np
 import torch
 
-from baseline_recall import (
+from icml_hyp.recall.baseline_recall import (
     update_mhn,
     update_mhn_batched,
     update_dam,
     update_dam_batched,
     make_query_from_target_euclidean,
+)
+from icml_hyp.data.sample_memory import sample_hyperboloid_points_from_tangent_ball
+from icml_hyp.geom.hyperboloid import HyperboloidKappa
+from icml_hyp.recall.memory_recall import (
+    identity_phi,
+    make_query_from_target,
+    update,
+    update_karcher_batched,
 )
 
 
@@ -86,7 +94,7 @@ def test_run_recall_mhn_batch_vs_no_batch():
         no_pca=False,
         pca_dim=None,
     )
-    from baseline_recall import run_recall_mhn
+    from icml_hyp.recall.baseline_recall import run_recall_mhn
 
     r1 = run_recall_mhn(args, M=15, seed=3)
     args.use_batch = False
@@ -96,15 +104,6 @@ def test_run_recall_mhn_batch_vs_no_batch():
 
 def test_karcher_batched_matches_scalar():
     import geomstats.backend as gs
-
-    from hyperboloid import HyperboloidKappa
-    from memory_recall import (
-        identity_phi,
-        make_query_from_target,
-        update,
-        update_karcher_batched,
-    )
-    from sample_memory import sample_hyperboloid_points_from_tangent_ball
 
     geom = HyperboloidKappa(4, -1.0)
     rng = np.random.default_rng(0)
@@ -124,12 +123,13 @@ def test_karcher_batched_matches_scalar():
                 mem,
                 phi=identity_phi,
                 max_steps=12,
+                beta=10.0,
             )
             for t in range(M)
         ],
         axis=0,
     )
-    batched = update_karcher_batched(geom, queries, mem, max_steps=12)
+    batched = update_karcher_batched(geom, queries, mem, max_steps=12, beta=10.0)
     for t in range(M):
         d = float(geom.metric.dist(batched[t], scalar_stack[t]))
         assert d < 1e-5, (t, d)
@@ -141,6 +141,7 @@ def test_run_recall_hyperbolic_batch_vs_no_batch():
         d=5,
         mem_R=1.5,
         noise_sigma=0.1,
+        beta=10.0,
         max_steps=8,
         tol=0.05,
         kappa=-1,
@@ -149,7 +150,7 @@ def test_run_recall_hyperbolic_batch_vs_no_batch():
         no_pca=False,
         pca_dim=None,
     )
-    from memory_recall import run_recall_hyperbolic
+    from icml_hyp.recall.memory_recall import run_recall_hyperbolic
 
     r1 = run_recall_hyperbolic(args, "identity", M=12, seed=7)
     args.use_batch = False

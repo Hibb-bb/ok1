@@ -49,16 +49,33 @@ def image_title_dim(args: Namespace) -> str:
     return str(resolve_pca_dim_images(args))
 
 
+def beta_path_segment(args: Namespace) -> str:
+    """Directory name for softmax / update strength (e.g. beta10, beta0.5)."""
+    b = float(getattr(args, "beta", 1.0))
+    return f"beta{b:g}"
+
+
 def synthetic_csv_plot_paths(args: Namespace) -> tuple[Path, Path]:
     """Output paths for synthetic-dataset capacity runs."""
-    base = Path(args.output_dir) / f"dim{args.d}" / f"Radius{args.mem_R}"
+    base = (
+        Path(args.output_dir)
+        / f"dim{args.d}"
+        / f"Radius{args.mem_R}"
+        / beta_path_segment(args)
+    )
     return base / "result.csv", base / "recall_plot.png"
 
 
 def image_csv_plot_paths(args: Namespace) -> tuple[Path, Path]:
     """Output paths for image-dataset capacity runs ('pixels' or 'pca{d}')."""
     feat = image_feature_dir(args)
-    base = Path(args.output_dir) / args.dataset / feat / f"Radius{args.mem_R}"
+    base = (
+        Path(args.output_dir)
+        / args.dataset
+        / feat
+        / f"Radius{args.mem_R}"
+        / beta_path_segment(args)
+    )
     return base / "result.csv", base / "recall_plot.png"
 
 

@@ -1,0 +1,108 @@
+Metadata-Version: 2.4
+Name: memory
+Version: 0.1.0
+Summary: Hyperbolic associative memory simulations (capacity, in-class, visualizations).
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: geomstats>=2.8.0
+Requires-Dist: google>=3.0.0
+Requires-Dist: jupyter-analysis-tools>=1.7.2
+Requires-Dist: numpy==1.26.1
+Requires-Dist: openpyxl>=3.1.5
+Requires-Dist: pandas>=2.3.3
+Requires-Dist: pbd>=0.9
+Requires-Dist: ripser>=0.6.14
+Requires-Dist: scikit-learn>=1.8.0
+Requires-Dist: scipy>=1.16.3
+Requires-Dist: seaborn>=0.13.2
+Requires-Dist: torch>=2.2.0
+Requires-Dist: torchvision>=0.24.1
+Requires-Dist: tqdm>=4.67.1
+Requires-Dist: wandb>=0.26.1
+
+# Hyperbolic neural population geometry benefits computation
+
+This repository contains the code to reproduce the simulations in "Hyperbolic neural population geometry benefits computation".
+
+
+### Environment
+
+```bash
+uv init
+uv venv
+source .venv/bin/activate
+uv sync
+```
+
+Activate the venv (e.g. `source .venv/bin/activate`) or prefix commands with `.venv/bin/python`.
+
+### Capacity simulation
+
+Image runs write under `outputs/<dataset>/<pixels|pca{d}>/Radius<R>/`.
+
+**Flags**
+
+- `--no-pca` — MNIST/CIFAR use full flattened pixels (784 / 3072).
+- `--device cpu|cuda` — Euclidean MHN/DAM use PyTorch on this device. Hyperbolic image runs can use CUDA memory tensors when `GEOMSTATS_BACKEND=pytorch` (see below).
+- `--no-batch` — disables batched Euclidean MHN/DAM and batched **Karcher-Flow** on CPU (falls back to scalar loops). On GPU, Karcher-Flow is always per-query.
+
+**Hyperbolic / geomstats:** for CUDA hyperbolic dynamics, either export `GEOMSTATS_BACKEND=pytorch` or pass `--device cuda`; `capacity_simulation.py` and `inclass_simulation.py` call `recall_config.early_set_geomstats_backend_from_argv()` so a clean `python ... --device cuda ...` run sets the backend when possible. **Batched Karcher-Flow** (one dynamics step over all queries) runs only with **CPU** hyperbolic paths (`--device cpu` or synthetic, which always uses CPU for hyperboloid math). With `--device cuda`, identity Karcher uses the legacy per-query loop.
+
+**Example commands**
+
+```bash
+# Synthetic (default): capacity curve, small trial count
+python capacity_simulation.py --M-min 20 --M-max 200 --M-step 20 --n-trials 10 --max-steps 5
+
+# MNIST + PCA; Euclidean models on GPU if available
+python capacity_simulation.py --dataset mnist --device cuda --no-pca \
+  --M-min 10 --M-max 1000 --n-trials 5 --max-steps 5 --mem-R 3
+
+# CIFAR-10, raw pixels (heavy)
+python capacity_simulation.py --dataset cifar10 --no-pca --device cuda \
+  --M-min 10 --M-max 100 --n-trials 5 --max-steps 5 --mem-R 3
+
+# Debug: scalar Euclidean + scalar Karcher (CPU)
+python capacity_simulation.py --dataset mnist --pca-dim 50 --device cpu --no-batch \
+  --M-min 10 --M-max 100 --n-trials 2 --max-steps 5
+```
+
+
+### In-class recall
+
+Outputs: `outputs/<dataset>/inclass/class<id>/<pixels|pca{d}>/Radius<R>/`.
+
+```bash
+python3 inclass_simulation.py --dataset cifar10 --class-id 3 --pca-dim 50 \
+  --M-min 10 --M-max 400 --mem-R 2 --n-trials 5 --device cpu
+
+python3 inclass_simulation.py --dataset mnist --class-id 0 --no-pca \
+  --M-min 10 --M-max 200 --mem-R 3 --n-trials 5 --device cuda
+
+python3 inclass_simulation.py --dataset cifar10 --class-id 0 --no-pca \
+  --M-min 10 --M-max 200 --mem-R 3 --n-trials 5 --device cuda
+```
+
+To run all simulations, see `run_exp.sh`
+
+### Jupyter notebooks
+
+Example notebooks live under **`notebooks/`**:
+
+- **`notebooks/01_capacity_simulation.ipynb`** — capacity curve (runs `capacity_simulation.py` via subprocess with `cwd = ok1/`).
+- **`notebooks/02_inclass_simulation.ipynb`** — in-class recall (`inclass_simulation.py`).
+- **`notebooks/03_vis_reconstructions.ipynb`** — reconstruction grid (`vis.py`).
+
+**Workflow:** activate `ok1/.venv`, use it as the Jupyter kernel, and start Jupyter from **`ok1/`** or **`ok1/notebooks/`**. Each notebook finds the repo root and launches the CLI in a subprocess so `./data/` and flags match bash. For CUDA geomstats parity, include **`--device cuda`** in the subprocess flags like the Capacity section above.
+
+salloc --account=p32593 --job-name=ok --nodes=1 --partition=gengpu --gres=gpu:a100:1 --ntasks-per-node=1 --cpus-per-task=16 --mem=80G --time=01:00:00
+
+
+p32234
+
+srun --jobid=7501129 --pty bash -l
+
+python capacity_simulation.py --dataset cifar10 --device cuda --no-pca \
+  --M-min 10 --M-max 1000 --n-trials 5 --max-steps 5 --mem-R 2 \
+  --wandb --wandb-group "test" \
+  --wandb-tags "sim:capacity,dataset:cifar10,feat:pixels,R:2,device:cuda"

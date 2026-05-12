@@ -1,12 +1,16 @@
-from hyperboloid import HyperboloidKappa
 import numpy as np
 import geomstats.backend as gs
-from sample_memory import sample_hyperboloid_points_from_tangent_ball
 from scipy.special import softmax
 
 import torch
 
-from recall_config import resolve_pca_dim_images, resolve_torch_device, set_global_torch_seed
+from icml_hyp.geom.hyperboloid import HyperboloidKappa
+from icml_hyp.data.sample_memory import sample_hyperboloid_points_from_tangent_ball
+from icml_hyp.config.recall_config import (
+    resolve_pca_dim_images,
+    resolve_torch_device,
+    set_global_torch_seed,
+)
 
 
 def identity_phi(x, kappa=None):
@@ -34,10 +38,11 @@ def _softmax_weights(score):
     return softmax(np.asarray(score), axis=0)
 
 
-def update(geometry, query, memory, phi=identity_phi, max_steps=10):
+def update(geometry, query, memory, phi=identity_phi, max_steps=10, beta=10.0):
     query = geometry.regularize(query)
     memory = geometry.regularize(memory)
     tol = 0.01
+    beta = float(beta)
 
     for step in range(max_steps):
 
@@ -50,7 +55,7 @@ def update(geometry, query, memory, phi=identity_phi, max_steps=10):
         else:
             score = phi(geometry.metric.dist(query, memory))
 
-        weights = _softmax_weights(10*score)
+        weights = _softmax_weights(beta * score)
 
         if isinstance(weights, torch.Tensor):
             max_weight_idx = int(torch.argmax(weights).item())
@@ -75,6 +80,7 @@ def update_karcher_batched(
     memory,
     max_steps: int = 10,
     tol: float = 0.01,
+    beta: float = 10.0,
 ):
     """
     Batched Karcher-flow dynamics with identity score (negative Lorentz inner product).
@@ -85,6 +91,7 @@ def update_karcher_batched(
 
     Returns gs-array (B, dim+1) of terminal points.
     """
+    beta = float(beta)
     B = int(gs.shape(queries)[0])
     Mdim = int(gs.shape(memory)[0])
     d1 = int(gs.shape(queries)[1])
@@ -103,7 +110,7 @@ def update_karcher_batched(
         ip = geometry.embedding_space.metric.inner_product(q_flat, m_flat)
         inner_mb = gs.reshape(ip, (B, Mdim)).T
         score_mb = -inner_mb
-        w = _softmax_weights(10*score_mb)
+        w = _softmax_weights(beta * score_mb)
         w_np = np.asarray(w, dtype=np.float64)
         max_w = w_np.max(axis=0)
         argmax = np.argmax(w_np, axis=0)
@@ -197,6 +204,8 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
     else:
         raise ValueError(f"Unknown phi: {phi_choice}")
 
+    beta = float(getattr(args, "beta", 10.0))
+
     req_dev = resolve_torch_device(getattr(args, "device", "cpu"))
     set_global_torch_seed(int(seed), req_dev)
 
@@ -214,7 +223,7 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
         )
         queries_gs = None
     elif dataset in ["mnist", "cifar10"]:
-        from sample_image_memory import sample_images_from_dataset
+        from icml_hyp.data.sample_image_memory import sample_images_from_dataset
 
         requested_dim = resolve_pca_dim_images(args)
         memory_euclidean, _ = sample_images_from_dataset(
@@ -260,6 +269,7 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
                 Q0,
                 memory,
                 max_steps=args.max_steps,
+                beta=beta,
             )
             for t in range(M):
                 target = memory[t]
@@ -284,7 +294,14 @@ def run_recall_hyperbolic(args, phi_choice, M, seed):
                 query = queries_gs[t]
 
             try:
-                new = update(geometry, query, memory, phi=phi, max_steps=args.max_steps)
+                new = update(
+                    geometry,
+                    query,
+                    memory,
+                    phi=phi,
+                    max_steps=args.max_steps,
+                    beta=beta,
+                )
                 dist = geometry.metric.dist(new, target)
                 if isinstance(dist, torch.Tensor):
                     ok = float(dist.item()) < args.tol

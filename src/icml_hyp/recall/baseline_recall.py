@@ -3,7 +3,11 @@ from scipy.special import softmax
 
 import torch
 
-from recall_config import resolve_pca_dim_images, resolve_torch_device, set_global_torch_seed
+from icml_hyp.config.recall_config import (
+    resolve_pca_dim_images,
+    resolve_torch_device,
+    set_global_torch_seed,
+)
 
 
 def l2_normalize(x, axis=-1, eps=1e-12):
@@ -115,7 +119,7 @@ def update_dam_batched(
         output = torch.where(newly.unsqueeze(1), mem_raw[argmax], output)
         if bool(converged.all().item()):
             break
-        Q = score.T @ mem_raw
+        Q = w.T @ mem_raw
         Q = torch.where(converged.unsqueeze(1), output, Q)
 
     return torch.where(converged.unsqueeze(1), output, Q)
@@ -131,11 +135,11 @@ def _load_memory_numpy(args, M, seed):
     mem_R = float(getattr(args, "mem_R", 3.0))
     dataset = getattr(args, "dataset", "synthetic")
     if dataset == "synthetic":
-        from sample_euclidean_memory import uniform_sampling_in_ball
+        from icml_hyp.data.sample_euclidean_memory import uniform_sampling_in_ball
 
         memory = uniform_sampling_in_ball(M=M, dim=n, R=mem_R)
     elif dataset in ["mnist", "cifar10"]:
-        from sample_image_memory import sample_images_from_dataset
+        from icml_hyp.data.sample_image_memory import sample_images_from_dataset
 
         pca_dim = resolve_pca_dim_images(args)
         memory, _ = sample_images_from_dataset(
@@ -147,7 +151,7 @@ def _load_memory_numpy(args, M, seed):
 
 
 def run_recall_mhn(args, M, seed):
-    beta = float(getattr(args, "beta", 1.0))
+    beta = float(getattr(args, "beta", 10.0))
     device = resolve_torch_device(getattr(args, "device", "cpu"))
     use_batch = getattr(args, "use_batch", True)
     set_global_torch_seed(int(seed), device)
@@ -185,7 +189,7 @@ def run_recall_mhn(args, M, seed):
 
 
 def run_recall_dam(args, M, seed):
-    beta = float(getattr(args, "beta", 1.0))
+    beta = float(getattr(args, "beta", 10.0))
     n_order = int(getattr(args, "n_order", 10))
     device = resolve_torch_device(getattr(args, "device", "cpu"))
     use_batch = getattr(args, "use_batch", True)
