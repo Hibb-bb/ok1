@@ -14,7 +14,7 @@ def l2_normalize(x, axis=-1, eps=1e-12):
     return x / (np.linalg.norm(x, axis=axis, keepdims=True) + eps)
 
 
-def update_mhn(query, memory, beta=1, scale=False, normalize=True, max_steps=10):
+def update_mhn(query, memory, beta=1, scale=False, normalize=False, max_steps=10):
     memory = np.asarray(memory, dtype=np.float64)
     query = np.asarray(query, dtype=np.float64)
     beta = np.float64(beta)
@@ -42,7 +42,7 @@ def update_mhn_batched(
     *,
     beta: float,
     scale: bool = False,
-    normalize: bool = True,
+    normalize: bool = False,
     max_steps: int = 10,
     tol: float = 0.01,
 ) -> torch.Tensor:
@@ -90,7 +90,7 @@ def update_dam(query, memory, n_order=10, beta=1, max_steps=10):
 
         if max_weight >= 1 - tol:
             return memory[max_weight_idx]
-        query = w @ memory
+        query = score @ memory
     return query
 
 
@@ -119,7 +119,7 @@ def update_dam_batched(
         output = torch.where(newly.unsqueeze(1), mem_raw[argmax], output)
         if bool(converged.all().item()):
             break
-        Q = w.T @ mem_raw
+        Q = score.T @ mem_raw
         Q = torch.where(converged.unsqueeze(1), output, Q)
 
     return torch.where(converged.unsqueeze(1), output, Q)

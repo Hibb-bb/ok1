@@ -55,7 +55,7 @@ def update(geometry, query, memory, phi=identity_phi, max_steps=10, beta=10.0):
         else:
             score = phi(geometry.metric.dist(query, memory))
 
-        weights = _softmax_weights(beta * score)
+        weights = _softmax_weights(beta * -score)
 
         if isinstance(weights, torch.Tensor):
             max_weight_idx = int(torch.argmax(weights).item())

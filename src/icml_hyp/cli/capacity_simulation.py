@@ -229,7 +229,7 @@ def _wandb_init_capacity(args):
     ]
     return init_wandb_run(
         args,
-        project=f"ICML-Hyperbolic-{args.dataset}",
+        project=f"Hyperbolic-{args.dataset}",
         run_name=run_name,
         extra_tags=extra_tags,
     )

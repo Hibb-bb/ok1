@@ -181,7 +181,7 @@ def _wandb_init_inclass(args, class_id: int):
     ]
     return init_wandb_run(
         args,
-        project="ICML-Hyperbolic-Inclass",
+        project="Hyperbolic-Inclass",
         run_name=run_name,
         extra_tags=extra_tags,
     )
