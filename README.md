@@ -1,3 +1,4 @@
+<div align="center">
 
 <h1 align="center">Hyperbolic neural population geometry benefits computation </h1>
 
