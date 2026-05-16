@@ -15,7 +15,10 @@
 
 <div style="margin-top: 0.75em;"></div>
 
-This paper proves that under <b>exponentially distributed place field sizes<b>, the population geometry induced by the hippocampal place cells is hyperbolic.
+<p>
+  This paper proves that under <b>exponentially distributed place field sizes<b>, the population geometry induced by the hippocampal place cells is hyperbolic.
+</p>
+
 
 <p>
   This repository provides implementation for:
