@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="imgs/figure.pdf" alt="BWLer banner" height="300"/>
+  <img src="imgs/Group 4.png" alt="overview" height="300"/>
 
   <br/>
 
