@@ -1,4 +1,16 @@
 <div align="center">
+  <img src="imgs/figure.pdf" alt="BWLer banner" height="300"/>
+
+  <br/>
+
+  <!-- <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/HazyResearch/bwler" alt="License"/>
+  </a> -->
+  <!-- a href="https://arxiv.org/abs/2506.23024">
+    <img src="https://img.shields.io/badge/arXiv-2506.23024-b31b1b.svg" alt="arXiv"/> 
+  </a> -->
+
+<div align="center">
 
 <h1 align="center">Hyperbolic neural population geometry benefits computation </h1>
 
