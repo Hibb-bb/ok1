@@ -1,8 +1,9 @@
 <div align="center">
-  <img src="imgs/Group 4(1).png" alt="overview" height="300"/>
+  <img src="imgs/Group 4(1).png" alt="overview" height="400"/>
 
   <br/>
 
+</div>
   <!-- <a href="LICENSE">
     <img src="https://img.shields.io/github/license/HazyResearch/bwler" alt="License"/>
   </a> -->
